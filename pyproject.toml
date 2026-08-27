@@ -4,6 +4,10 @@ description = "Chat with your already-loaded Qwen2.5-VL image-edit text encoder 
 version = "0.1.0"
 license = "MIT"
 
+[project.urls]
+Repository = "https://github.com/ketle-man/comfyui-chat-te"
+
 [tool.comfy]
 PublisherId = "statsu"
 DisplayName = "Chat TE"
+Icon = "https://raw.githubusercontent.com/ketle-man/comfyui-chat-te/master/docs/thumb.png"

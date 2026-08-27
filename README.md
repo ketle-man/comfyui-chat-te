@@ -2,6 +2,8 @@
 
 ComfyUIの Qwen-Image-Edit 用テキストエンコーダー(Qwen2.5-VL-7B、Qwen3-VL-4B/8B)を、**別のLLMを追加ロードすることなく**そのままチャット(マルチターン・vision対応)として使えるようにするComfyUIカスタムノードです。
 
+![Chat TE screenshot](docs/chatTE_image.png)
+
 - **VRAM節約**: チャット専用に別のLLMをロードしません。ComfyUIが既にロードしているQwen2.5-VL/Qwen3-VLのCLIPをそのまま使い回します。
 - **段階的な画像生成**: ラフ案について会話しながらプロンプトを練り、そのままチャットから画像編集/生成ノードのプロンプト欄に送り込めます。
 
