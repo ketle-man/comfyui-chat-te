@@ -55,7 +55,7 @@ QWEN25_VL_STOP_TOKENS = [151643, 151645]
 # support for text encoders is a recent addition, so this is quoted in the
 # error message below as a known-working reference point, not asserted as a
 # hard minimum -- older commits may or may not have it.
-_VERIFIED_COMFYUI_REF = "ComfyUI 0.33.1 (commit 72865f4, 2026-08-13)"
+_VERIFIED_COMFYUI_REF = "ComfyUI 0.42.0 (2026-10-19)"
 
 
 class ChatBackendUnsupportedError(RuntimeError):
