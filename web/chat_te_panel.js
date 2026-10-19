@@ -96,6 +96,51 @@ async function uploadImageToComfy(file) {
     return res.json(); // {name, subfolder, type}
 }
 
+// Qwen2.5-VL / Qwen3-VL are fed a video as several still frames (one vision
+// block per frame), so the sampling happens here in the browser: seek a
+// <video> element to evenly spaced timestamps and grab each frame via canvas.
+// No server-side decoder (ffmpeg / av) needed, and the existing multi-image
+// chat path handles the rest. Frames are downscaled because every frame costs
+// a full image's worth of vision tokens.
+async function extractVideoFrames(file, count, maxSide = 512) {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.muted = true;
+    video.preload = "auto";
+    video.src = url;
+    try {
+        await new Promise((resolve, reject) => {
+            video.onloadedmetadata = resolve;
+            video.onerror = () => reject(new Error("could not decode this video (unsupported codec?)"));
+        });
+        const duration = video.duration;
+        if (!Number.isFinite(duration) || duration <= 0 || !video.videoWidth) {
+            throw new Error("video has no readable duration / size");
+        }
+        const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+        canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+        const ctx = canvas.getContext("2d");
+        const frames = [];
+        for (let i = 0; i < count; i++) {
+            // Centre of each of `count` equal slices, so the first/last frame
+            // aren't the (often black) very first/last instants.
+            const t = Math.min(duration - 0.001, (duration * (i + 0.5)) / count);
+            await new Promise((resolve, reject) => {
+                video.onseeked = resolve;
+                video.onerror = () => reject(new Error("seek failed"));
+                video.currentTime = t;
+            });
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            frames.push(canvas.toDataURL("image/jpeg", 0.85));
+        }
+        return frames;
+    } finally {
+        URL.revokeObjectURL(url);
+    }
+}
+
 async function callChatTE(messages, { maxTokens = 512, temperature = 0.7, enableThinking = false } = {}) {
     const res = await fetch("/v1/chat/completions", {
         method: "POST",
@@ -194,13 +239,17 @@ function buildPanel(container) {
                     <label class="chat-te-inline-label" for="chat-te-max-tokens">Max tokens</label>
                     <input id="chat-te-max-tokens" type="number" min="1" max="8192" step="1" value="512">
                 </div>
+                <div class="chat-te-row">
+                    <label class="chat-te-inline-label" for="chat-te-video-frames" title="Frames sampled evenly from an attached video; each frame costs as many vision tokens as one image">Video frames</label>
+                    <input id="chat-te-video-frames" type="number" min="1" max="32" step="1" value="8">
+                </div>
             </div>
 
             <div class="chat-te-chat">
                 <div id="chat-te-messages" class="chat-te-messages"></div>
                 <div class="chat-te-input-area">
-                    <div id="chat-te-dropzone" class="chat-te-dropzone">Drop / click to attach an image</div>
-                    <input id="chat-te-file-input" type="file" accept="image/*" style="display:none">
+                    <div id="chat-te-dropzone" class="chat-te-dropzone">Drop / click to attach an image or video</div>
+                    <input id="chat-te-file-input" type="file" accept="image/*,video/*" style="display:none">
                     <div id="chat-te-attach-preview" class="chat-te-attach-preview" style="display:none">
                         <img id="chat-te-attach-thumb">
                         <span id="chat-te-attach-label">attached</span>
@@ -229,6 +278,7 @@ function buildPanel(container) {
     const sysPromptEl = container.querySelector("#chat-te-sysprompt");
     const thinkingEl = container.querySelector("#chat-te-thinking");
     const maxTokensEl = container.querySelector("#chat-te-max-tokens");
+    const videoFramesEl = container.querySelector("#chat-te-video-frames");
     const messagesEl = container.querySelector("#chat-te-messages");
     const dropzone = container.querySelector("#chat-te-dropzone");
     const fileInput = container.querySelector("#chat-te-file-input");
@@ -242,8 +292,8 @@ function buildPanel(container) {
     const clearBtn = container.querySelector("#chat-te-clear-btn");
     const chatStatusEl = container.querySelector("#chat-te-chatstatus");
 
-    let history = []; // {role, text, imageDataUrl?}
-    let attachedImage = null; // data URL, used for the chat preview + vision payload
+    let history = []; // {role, text, imageDataUrls?}
+    let attachedImages = []; // data URLs (one for an image, N sampled frames for a video), used for the chat preview + vision payload
     let attachedImageUpload = null; // {name, subfolder, type} once staged into ComfyUI's input/ folder
 
     // The system prompt textarea otherwise only lives in this closure's DOM
@@ -378,10 +428,10 @@ function buildPanel(container) {
         }
     });
 
-    function setAttachedImage(dataUrl) {
-        attachedImage = dataUrl;
-        if (dataUrl) {
-            attachThumb.src = dataUrl;
+    function setAttachedImages(dataUrls) {
+        attachedImages = dataUrls || [];
+        if (attachedImages.length) {
+            attachThumb.src = attachedImages[0];
             attachPreview.style.display = "flex";
         } else {
             attachPreview.style.display = "none";
@@ -395,8 +445,25 @@ function buildPanel(container) {
     // request, and the same file is staged into ComfyUI's input/ folder so
     // "Send to workflow" can wire it into a graph node without asking the
     // user to attach it a second time.
+    async function attachVideo(file) {
+        const count = Math.min(32, Math.max(1, parseInt(videoFramesEl.value, 10) || 8));
+        setAttachedImages(null);
+        setChatStatus(`Sampling ${count} frames from ${file.name}...`, "");
+        try {
+            const frames = await extractVideoFrames(file, count);
+            setAttachedImages(frames);
+            attachLabel.textContent = `video: ${frames.length} frames`;
+            setChatStatus("", "");
+        } catch (e) {
+            setChatStatus(`Video load failed: ${e.message}`, "err");
+        }
+        // The stock /upload/image + LoadImage widget route is image-only, so
+        // "Send to workflow" stays disabled for videos.
+    }
+
     async function attachFile(file) {
-        setAttachedImage(await fileToDataUrl(file));
+        if (file.type.startsWith("video/")) return attachVideo(file);
+        setAttachedImages([await fileToDataUrl(file)]);
         attachedImageUpload = null;
         attachSendWfBtn.disabled = true;
         attachLabel.textContent = "uploading...";
@@ -429,7 +496,7 @@ function buildPanel(container) {
         setChatStatus(`Sent "${filename}" to workflow`, "ok");
     });
 
-    attachClear.addEventListener("click", () => setAttachedImage(null));
+    attachClear.addEventListener("click", () => setAttachedImages(null));
     dropzone.addEventListener("click", () => fileInput.click());
     fileInput.addEventListener("change", async (e) => {
         const file = e.target.files?.[0];
@@ -441,16 +508,16 @@ function buildPanel(container) {
         e.preventDefault();
         dropzone.classList.remove("drag-over");
         const file = e.dataTransfer.files?.[0];
-        if (file && file.type.startsWith("image/")) await attachFile(file);
+        if (file && (file.type.startsWith("image/") || file.type.startsWith("video/"))) await attachFile(file);
     });
 
-    function appendBubble(role, text, imageDataUrl) {
+    function appendBubble(role, text, imageDataUrls) {
         const div = document.createElement("div");
         div.className = `chat-te-msg chat-te-msg-${role}`;
         if (text) div.appendChild(document.createTextNode(text));
-        if (imageDataUrl) {
+        for (const url of imageDataUrls || []) {
             const img = document.createElement("img");
-            img.src = imageDataUrl;
+            img.src = url;
             div.appendChild(img);
         }
         if (role === "assistant" && text) {
@@ -479,28 +546,28 @@ function buildPanel(container) {
         const text = textInput.value.trim();
         if (!text) return;
 
-        const userMsg = { role: "user", text, imageDataUrl: attachedImage };
+        const userMsg = { role: "user", text, imageDataUrls: attachedImages };
         history.push(userMsg);
-        appendBubble("user", text, attachedImage);
+        appendBubble("user", text, attachedImages);
 
         textInput.value = "";
         // Deliberately not clearing the attachment here: the preview and its
         // "Send to workflow" button stay up after sending so there's time to
         // wire the image into a graph node once the chat about it is done --
         // only the explicit clear ("x") button or attaching a new image
-        // resets it (see setAttachedImage / attachClear below).
+        // resets it (see setAttachedImages / attachClear below).
 
         sendBtn.disabled = true;
         setChatStatus("Thinking...", "");
 
         try {
             const wireMessages = history.map((m) => {
-                if (m.role === "user" && m.imageDataUrl) {
+                if (m.role === "user" && m.imageDataUrls?.length) {
                     return {
                         role: "user",
                         content: [
                             { type: "text", text: m.text },
-                            { type: "image_url", image_url: { url: m.imageDataUrl } },
+                            ...m.imageDataUrls.map((url) => ({ type: "image_url", image_url: { url } })),
                         ],
                     };
                 }
