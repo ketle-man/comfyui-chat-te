@@ -13,7 +13,7 @@ class QwenChatBridgeLoader(io.ComfyNode):
             display_name="Qwen Chat Bridge (Register CLIP)",
             category="chat_te",
             description=(
-                "Registers an already-loaded Qwen2.5-VL or Qwen3-VL CLIP as the active "
+                "Registers an already-loaded Qwen2.5-VL, Qwen3-VL or Qwen3.5 CLIP as the active "
                 "backend for the Chat TE sidebar panel and the /v1/chat/completions "
                 "endpoint. Passes the CLIP through unchanged -- no extra copy of the "
                 "model is created, so VRAM usage does not increase."

@@ -171,6 +171,25 @@ def build_prompt(messages, tools=None, system_prompt=None, append_no_think=False
     return prompt, image_refs
 
 
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
+
+def strip_thinking(raw_text):
+    """Drop completed `<think>...</think>` reasoning blocks from a response.
+    Qwen3.5 reasons by default and emits the block as ordinary text (the tag
+    is not a special token, so decode(skip_special_tokens=True) keeps it);
+    left in, it fills the visible reply and eats the max_tokens budget before
+    the answer. An *unterminated* block (generation hit max_tokens mid-
+    thought) is left untouched so the truncation stays visible instead of
+    producing an empty reply. A lone closing tag, which appears when the
+    prompt itself already opened the block, drops everything before it."""
+    if "</think>" not in raw_text:
+        return raw_text
+    if "<think>" not in raw_text:
+        return raw_text.rsplit("</think>", 1)[1].lstrip()
+    return _THINK_BLOCK_RE.sub("", raw_text)
+
+
 def extract_tool_calls(raw_text):
     """Split a generated response into (visible_content, tool_calls_or_None)."""
     matches = _TOOL_CALL_RE.findall(raw_text)

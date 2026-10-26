@@ -90,7 +90,7 @@ def _check_generate_support(clip):
             "(expected clip.cond_stage_model.<name>.transformer, where <name> "
             "is cond_stage_model.clip -- e.g. Qwen2.5-VL's 'qwen25_7b' or "
             "Qwen3-VL's 'qwen3vl_8b'/'qwen3vl_4b'). Make sure the loaded text "
-            "encoder is a Qwen2.5-VL or Qwen3-VL model loaded with "
+            "encoder is a Qwen2.5-VL, Qwen3-VL or Qwen3.5 model loaded with "
             "CLIPType.QWEN_IMAGE."
         )
     if not callable(getattr(transformer, "generate", None)):
@@ -219,6 +219,14 @@ def _patch_lm_head(transformer, model_path, lm_head_weight=None):
     inner_model = getattr(transformer, "model", None)
     if inner_model is None or getattr(inner_model, "lm_head", None) is not None:
         return  # already has one (or nothing to attach it to)
+
+    config = getattr(inner_model, "config", None)
+    if config is not None and type(config).__name__ == "Qwen35Config":
+        # Qwen3.5 (comfy/text_encoders/qwen35.py) builds its own lm_head for the
+        # 9B/27B sizes and ties embeddings by design for 0.8B/2B/4B, so there is
+        # nothing to patch. This also couldn't work: layer 0 is a linear-attention
+        # layer with no `self_attn` for the Linear-class lookup below.
+        return
 
     weight = lm_head_weight
     if weight is None:

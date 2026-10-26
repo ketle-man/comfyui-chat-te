@@ -20,7 +20,7 @@ import torch
 from PIL import Image
 
 from . import chat_state
-from .chat_template import build_prompt, extract_tool_calls
+from .chat_template import build_prompt, extract_tool_calls, strip_thinking
 
 
 def _ensure_prompt_server_progress_state():
@@ -106,4 +106,4 @@ def run_chat(
         seed=seed,
     )
     raw_text = clip.decode(token_ids, skip_special_tokens=True)
-    return extract_tool_calls(raw_text)
+    return extract_tool_calls(strip_thinking(raw_text))

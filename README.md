@@ -1,10 +1,10 @@
 # Chat TE
 
-ComfyUIの Qwen-Image-Edit 用テキストエンコーダー(Qwen2.5-VL-7B、Qwen3-VL-4B/8B)を、**別のLLMを追加ロードすることなく**そのままチャット(マルチターン・vision対応)として使えるようにするComfyUIカスタムノードです。
+ComfyUIの Qwen-Image-Edit 用テキストエンコーダー(Qwen2.5-VL-7B、Qwen3-VL-4B/8B、Qwen3.5)を、**別のLLMを追加ロードすることなく**そのままチャット(マルチターン・vision対応)として使えるようにするComfyUIカスタムノードです。
 
 ![Chat TE screenshot](docs/chatTE_image.png)
 
-- **VRAM節約**: チャット専用に別のLLMをロードしません。ComfyUIが既にロードしているQwen2.5-VL/Qwen3-VLのCLIPをそのまま使い回します。
+- **VRAM節約**: チャット専用に別のLLMをロードしません。ComfyUIが既にロードしているQwen2.5-VL/Qwen3-VL/Qwen3.5のCLIPをそのまま使い回します。
 - **段階的な画像生成**: ラフ案について会話しながらプロンプトを練り、そのままチャットから画像編集/生成ノードのプロンプト欄に送り込めます。
 
 ## 仕組み
@@ -14,7 +14,7 @@ ComfyUIの Qwen-Image-Edit 用テキストエンコーダー(Qwen2.5-VL-7B、Qwe
 ## 必要環境
 
 - **比較的新しいComfyUI**(`CLIP.generate()`によるテキスト生成のネイティブサポートが必要。動作確認: ComfyUI 0.33.1 / commit `72865f4` / 2026-08-13)。古いComfyUIでは`clip.generate`メソッド自体が存在せず動作しません。
-- **Qwen2.5-VL-7B-Instruct**または**Qwen3-VL-4B/8B**のテキストエンコーダーファイル(`models/text_encoders/`配下)。**Qwen2.5-VLの3B・32B・72B、Qwen3(非VL)、Qwen3-VL-32Bは非対応**です(サイズ・アーキテクチャの不一致、またはComfyUI本体が汎用チャット用のネイティブ生成経路を持たないため)。`.safetensors`形式のほか、**`.gguf`形式にも対応**しています(下記「GGUF形式について」参照)。
+- **Qwen2.5-VL-7B-Instruct**、**Qwen3-VL-4B/8B**、または**Qwen3.5**(0.8B/2B/4B/9B/27Bのdense版。ファイル名に`qwen3.5`/`qwen3_5`/`qwen35`を含むもの)のテキストエンコーダーファイル(`models/text_encoders/`配下)。**Qwen2.5-VLの3B・32B・72B、Qwen3(非VL)、Qwen3-VL-32B、Qwen3.5のMoE版(35B-A3B等)は非対応**です(サイズ・アーキテクチャの不一致、またはComfyUI本体が汎用チャット用のネイティブ生成経路を持たないため)。`.safetensors`形式のほか、**`.gguf`形式にも対応**しています(下記「GGUF形式について」参照)。
 - 追加のPython依存パッケージは不要です(ComfyUI同梱のものだけで動作します)。GGUF形式のテキストエンコーダーを使う場合のみ、`ComfyUI-GGUF`(city96)および/または`gguf`(calcuis)カスタムノードが別途必要です。
 
 ### GGUF形式について
@@ -35,7 +35,7 @@ ComfyUIの Qwen-Image-Edit 用テキストエンコーダー(Qwen2.5-VL-7B、Qwe
 
 1. ComfyUI左サイドバーの「Chat TE」タブを開く
 2. ヘッダー右の⚙(設定)アイコンをクリックして設定パネルを開き、モデル選択のプルダウンからテキストエンコーダーファイルを選んで「Load」をクリック(ロード状態はヘッダーの丸印の色でも常に確認できます: 灰=未ロード/緑=ロード済み/赤=エラー)
-   - **Thinking mode**(Qwen3-VLのみ有効。Qwen2.5-VLでは無視されます): デフォルトON(モデルの自然な挙動のまま何も手を加えません)。OFFにすると空の`<think></think>`ブロックを付加して思考過程の出力を抑制し即答させますが、モデルによっては(特にlm_headを共有=tied embeddingsな軽量モデル、例: Qwen3-VL-4B)出力が崩れることを実機で確認しているため、基本的にはONのままにしてください。
+   - **Thinking mode**(Qwen3-VL/Qwen3.5のみ有効。Qwen2.5-VLでは無視されます): デフォルトON(モデルの自然な挙動のまま何も手を加えません)。Qwen3.5は既定で思考してから答えるため、完結した`<think>...</think>`ブロックは応答から自動的に取り除かれます(思考が長引いてMax tokensに達した場合は未完結の思考がそのまま表示されるので、Max tokensを増やすかThinking modeをOFFにしてください)。OFFにすると空の`<think></think>`ブロックを付加して思考過程の出力を抑制し即答させますが、モデルによっては(特にlm_headを共有=tied embeddingsな軽量モデル、例: Qwen3-VL-4B)出力が崩れることを実機で確認しているため、基本的にはONのままにしてください。
    - **Max tokens**: 1回の応答で生成する最大トークン数(デフォルト512)。
    - **Video frames**(デフォルト8、1〜32): 動画を添付したときに等間隔で抜き出すフレーム数。各フレームは画像1枚分のvisionトークンを消費します。
    - システムプロンプトはブラウザの`localStorage`に保存され、ComfyUIやパネルを再読み込みしても保持されます。
@@ -71,7 +71,7 @@ ComfyUIの Qwen-Image-Edit 用テキストエンコーダー(Qwen2.5-VL-7B、Qwe
 
 ## 既知の制限事項
 
-- 対応アーキテクチャはQwen2.5-VL-**7B**とQwen3-VL-**4B/8B**のみです。Qwen2.5-VLの3B/32B/72B、Qwen3(非VL、テキストのみ)、Qwen3-VL-32Bは非対応です(Qwen3非VLはComfyUI本体が汎用チャット用の生成経路を持たず、画像生成モデル専用のテキストエンコーダー実装に固定でルーティングされるため)。
+- 対応アーキテクチャはQwen2.5-VL-**7B**、Qwen3-VL-**4B/8B**、Qwen3.5(dense版)のみです。Qwen2.5-VLの3B/32B/72B、Qwen3(非VL、テキストのみ)、Qwen3-VL-32B、Qwen3.5のMoE版は非対応です(Qwen3非VLはComfyUI本体が汎用チャット用の生成経路を持たず、画像生成モデル専用のテキストエンコーダー実装に固定でルーティングされるため)。
 - 一部のファイルはファイル名と実際のモデルサイズが一致していない場合があります(例: ファイル名に`fp16`とだけ書かれていて7B版のように見えても、中身がQwen2.5-VL-3Bだった実例あり)。ロード時に「Could not find a supported Qwen language model inside this CLIP」というエラーが出た場合は、まずファイルの実体が本当に対応サイズかを疑ってください。
 - パネルからの独立ロード、またはワークフロー側の独自ロードとの組み合わせでは、真のゼロコストVRAM共有にはなりません(上記「グラフノードから使う」を参照)。
 - GGUF形式のロードには`ComfyUI-GGUF`(city96)または`gguf`(calcuis)が必要です。未インストールの場合は`.gguf`ファイルを選択してもロード時にエラーメッセージが表示されます。

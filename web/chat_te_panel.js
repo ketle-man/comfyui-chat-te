@@ -230,7 +230,7 @@ function buildPanel(container) {
                     <textarea id="chat-te-sysprompt" class="chat-te-sysprompt" placeholder="System prompt (optional)"></textarea>
                 </div>
                 <div class="chat-te-row">
-                    <label class="chat-te-inline-label" title="Qwen3-VL only -- ignored by Qwen2.5-VL models. Leave this on unless you specifically want to suppress the model's reasoning preamble; turning it off has caused broken output on at least one model (Qwen3-VL-4B).">
+                    <label class="chat-te-inline-label" title="Qwen3-VL / Qwen3.5 only -- ignored by Qwen2.5-VL models. Leave this on unless you specifically want to suppress the model's reasoning preamble; turning it off has caused broken output on at least one model (Qwen3-VL-4B).">
                         <input id="chat-te-thinking" type="checkbox" checked>
                         Thinking mode
                     </label>
