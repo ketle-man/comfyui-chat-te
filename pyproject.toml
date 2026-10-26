@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-chat-te"
 description = "Chat with your already-loaded Qwen2.5-VL image-edit text encoder instead of loading a separate LLM -- multi-turn, vision-capable chat that shares the same VRAM."
-version = "0.7.0"
+version = "0.8.0"
 license = "MIT"
 
 [project.urls]
