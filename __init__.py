@@ -28,6 +28,18 @@ def _register_http_routes():
         logging.getLogger(__name__).exception("Chat TE: failed to register HTTP routes")
 
 
+def _install_model_manager_guard():
+    # Chat TE loads/unloads models from an HTTP thread; serialize that with ComfyUI's prompt worker.
+    # See py/mm_guard.py for the failure this prevents.
+    try:
+        from .py.mm_guard import install
+
+        install()
+    except Exception:
+        logging.getLogger(__name__).exception("Chat TE: failed to install model-manager guard")
+
+
+_install_model_manager_guard()
 _register_http_routes()
 
 
